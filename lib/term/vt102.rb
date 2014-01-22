@@ -523,7 +523,7 @@ module Term
 
     # Return the textual contents of the given row, or undef if out of range.
     #
-    def row_text(row, startcol=nil, endcol=nil)
+    def row_text(row, startcol = nil, endcol = nil)
       return nil if (row < 1) || (row > @rows)
 
       text = @scrt[row].dup
@@ -537,7 +537,7 @@ module Term
     # Return the textual contents of the given row, or undef if out of range,
     # with unused characters represented as a space instead of \0.
     #
-    def row_plaintext(row, startcol, endcol)
+    def row_plaintext(row, startcol = nil, endcol = nil)
       return nil if (row < 1) || (row > @rows)
 
       text = @scrt[row].dup

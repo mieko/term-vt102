@@ -1,7 +1,7 @@
 # Test DECSC and DECRC.
 #
-# Copyright (C) Andrew Wood
 # Copyright (C) Mike Owens
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see LICENSE.txt
 #
 

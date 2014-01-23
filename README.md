@@ -7,8 +7,12 @@ any time, and notify you of changes.
 
 A lot of terrible legacy applications fall into this category.
 
-This gem is a port of Andrew Wood's Perl module, `Term::VT102`, available
-at http://www.ivarch.com/programs/termvt102.shtml
+This gem is a port of Andrew Wood's Perl module, `Term::VT102`.  Permission has
+been granted to release this derived work under the MIT license.
+
+Term::VT102 aims to be fairly literal port of the Perl module, and higher-level
+features will most likely show up in other gems instead of being integrated
+here.
 
 ## Installation
 
@@ -32,9 +36,8 @@ require 'term/vt102'
 
 vt = Term::VT102.new(cols: 80, rows: 25)
 
-vt.on(:rowchange) do |row, x, y|
-  # FIXME, real example.  See the tests.
-end
+# Await patiently at your editor for me to write documentation, or check out
+# the tests.
 
 ```
 

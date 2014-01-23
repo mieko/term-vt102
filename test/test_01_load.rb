@@ -1,7 +1,7 @@
 # Make sure the VT102 module loads OK and can return its version number.
 #
-# Copyright (C) Andrew Wood
 # Copyright (C) Mike Owens
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see LICENSE.txt
 #
 

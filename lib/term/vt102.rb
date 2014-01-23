@@ -2,8 +2,8 @@
 #
 # Ported from Andrew Wood's Perl module, 'Term::VT102'.
 #
+# Copyright (C) Mike Owens
 # Copyright (C) Andrew Wood
-# Copyright (C) Mike Owens <mike@filespanker.com>
 # NO WARRANTY - see LICENSE.txt
 #
 

@@ -1,8 +1,8 @@
 # Make sure the VT102 module can handle line and character insertion and
 # deletion, and line/screen clearing.
 #
-# Copyright (C) Andrew Wood
 # Copyright (C) Mike Owens
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see LICENSE.txt
 #
 

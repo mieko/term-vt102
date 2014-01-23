@@ -3,11 +3,11 @@
   Mike Owens <mike@filespanker.com>
     - Ruby Port.
 
+The following people have contributed to the original Term::VT102 Perl module.
+
   Andrew Wood <andrew dot wood at ivarch dot com>.
     - Author of the Term::VT102 Perl module, without which
       this project would not exist.
-
-The following people have contributed to the original Term::VT102 Perl module.
 
   Charles Harker <CHarker at interland dot com>
     - reported and helped to diagnose a bug in the handling of TABs

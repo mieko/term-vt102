@@ -1,7 +1,7 @@
 # Make sure the VT102 module can handle ANSI colour, underline, bold, etc.
 #
-# Copyright (C) Andrew Wood
 # Copyright (C) Mike Owens
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see LICENSE.txt
 #
 

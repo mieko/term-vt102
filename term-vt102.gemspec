@@ -6,7 +6,7 @@ require 'term/vt102/version'
 Gem::Specification.new do |spec|
   spec.name          = "term-vt102"
   spec.version       = Term::VT102::VERSION
-  spec.authors       = ["Mike Owens", "Andrew Wood"]
+  spec.authors       = ["Mike Owens"]
   spec.email         = ["mike@filespanker.com"]
   spec.summary       = %q{VT102 terminal implementation}
   spec.homepage      = "https://github.com/mieko/term-vt102"

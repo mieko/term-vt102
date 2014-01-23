@@ -1,13 +1,13 @@
 # Term::VT102
 
-`Term::VT102` provides emulation of a VT102 terminal.  It's a great way to
-automate interactions with remote systems, particularly ones that only provide
-interactive/curses style interfaces.  It can tell you what's on the screen at
-any time, and notify you of changes.
+Term::VT102 provides emulation of a VT102 terminal, in Ruby.  It's a great way
+to automate interactions with remote systems, particularly ones that only
+provide interactive/curses style interfaces.  It can tell you what's on the
+screen at any time, and notify you of changes.
 
 A lot of terrible legacy applications fall into this category.
 
-This gem is a port of Andrew Wood's Perl module, `Term::VT102`.  Permission has
+This gem is a port of Andrew Wood's Perl module, Term::VT102.  Permission has
 been granted to release this derived work under the MIT license.
 
 Term::VT102 aims to be fairly literal port of the Perl module, and higher-level

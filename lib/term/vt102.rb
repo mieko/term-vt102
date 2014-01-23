@@ -364,7 +364,7 @@ module Term
 
     # Call a callback function with the given parameters.
     #
-    def callback_call(callback, arg1, arg2 = 0)
+    def callback_call(callback, arg1 = 0, arg2 = 0)
       if (func = @_callbacks[callback])
         priv = @_callbackarg[callback]
         func.call(self, callback, arg1, arg2, priv)
@@ -602,12 +602,12 @@ module Term
     # sequences.
     #
     def row_sgrtext(row, startcol = 1, endcol = nil)
-      return nil unless (1 .. @rows).cover?(row)
+      return nil if row < 1 || row > @rows
 
       endcol ||= @cols
 
       return nil if endcol < startcol
-      return nil unless (1 .. @cols).cover?(startcol .. endcol)
+      return nil if startcol < 1 || endcol > @cols
 
       row_text = @scrt[row]
       row_attr = @scra[row]

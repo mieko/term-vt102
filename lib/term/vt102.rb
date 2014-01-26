@@ -8,6 +8,7 @@
 #
 
 require 'term/vt102/version'
+require 'term/vt102/decparser'
 
 module Term
   class VT102
@@ -50,9 +51,94 @@ module Term
     DEFAULT_ATTR = [7, 0, 0, 0, 0, 0, 0, 0].freeze
     DEFAULT_ATTR_PACKED = attr_pack(*DEFAULT_ATTR).freeze
 
+    def cb_execute(ctl)
+      name = @_ctlseq[ctl.chr]
+      return if name.nil?                  # ignore unknown characters
+
+      symbol = @_funcs[name]
+      if symbol.nil?
+        callback_call('UNKNOWN', name, ctl)
+      else
+        m = method(symbol)
+        send(symbol, *([name].first(m.arity)))
+      end
+    end
+
+    def cb_esc_dispatch(esc_code)
+      name = @_escseq[esc_code]
+      func = @_funcs[name]
+      if func.nil?
+        callback_call('UNKNOWN', :esc, esc_code)
+      else
+        send(func)
+      end
+    end
+
+    def cb_csi_dispatch(csi_code, *args)
+      name = @_csiseq[csi_code.chr]
+      func = @_funcs[name]
+      if func.nil?
+        callback_call('UNKNOWN', 'CSI', csi_code.chr, @parser.params.map(&:chr))
+      else
+        send(func, *@parser.params)
+      end
+    end
+
+    def cb_print(ch)
+      _process_text(ch.chr)
+    end
+
+    def cb_osc_start(ch)
+      @str_buf = ''
+    end
+
+    def cb_osc_put(ch)
+      @str_buf << ch.chr
+    end
+
+    def cb_osc_end(ch)
+      code, *params = @str_buf.split(';')
+      case code
+        when '0'
+          callback_call('XICONNAME', params[0])
+          callback_call('XWINTITLE', params[0])
+        when '1'
+          callback_call('XICONNAME', params[0])
+        when '2'
+          callback_call('XWINTITLE', params[0])
+        else
+          callback_call('UNKNOWN', 'OSC', code, params)
+      end
+    end
+
+    def cb_str_start(string_type, ch)
+      @str_buf = ''
+    end
+
+    def cb_str_put(string_type, ch)
+      @str_buf << ch.chr
+    end
+
+    def cb_str_end(string_type, ch)
+      callback_call('STRING', string_type.to_s.upcase, @str_buf)
+    end
+
+    def xon_command?(command, *args)
+      return true if command == :execute && args[0] == 17
+      return false
+    end
+
+    def parser_callback(command, *args)
+      if @_xon || xon_command?(command, *args)
+        send("cb_#{command}", *args)
+      end
+    end
+
     # Constructor function.
     #
     def initialize(cols: 80, rows: 24)
+      @parser = Term::DECParser.new(&method(:parser_callback))
+
       # control characters
       @_ctlseq = {
         "\000" => 'NUL',          # ignored
@@ -351,7 +437,7 @@ module Term
       @_cupsv = []
 
       # state is XON (characters accepted)
-      @_xon = 1
+      @_xon = true
 
       # tab stops
       @_tabstops = []
@@ -412,10 +498,7 @@ module Term
         i += 8
       end
 
-
-      @_buf = nil                          # blank the esc-sequence buffer
-      @_inesc = ''                         # not in any escape sequence
-      @_xon  = 1                           # state is XON (chars accepted)
+      @_xon  = true                        # state is XON (chars accepted)
 
       @cursor = 1                          # turn cursor on
     end
@@ -466,29 +549,8 @@ module Term
       [@x, @y, @attr, @ti, @ic]
     end
 
-    # Process the given string, updating the terminal object and calling any
-    # necessary callbacks on the way.
-    #
     def process(string)
-      while !string.empty?
-        if @_buf                           # in escape sequence
-          if string.sub!(/\A(.)/m, '')
-            ch = $1
-            if ch.match(/[\x00-\x1F]/mn)
-              _process_ctl(ch)
-            else
-              @_buf += ch
-              _process_escseq
-            end
-          end
-        else                               # not in escape sequence
-          if string.sub!(/\A([^\x00-\x1F\x7F\x9B]+)/mn, '')
-            _process_text($1)
-          elsif string.sub!(/\A(.)/m, '')
-            _process_ctl($1)
-          end
-        end
-      end
+      @parser.parse(string.encode('ASCII-8BIT'))
     end
 
     # Return the current value of the given option, or nil if it doesn't exist.
@@ -635,7 +697,7 @@ module Term
     # Process a string of plain text, with no special characters in it.
     #
     def _process_text(text)
-      return if @_xon == 0
+      return unless @_xon
 
       width = (@cols + 1) - @x
 
@@ -671,133 +733,6 @@ module Term
       callback_call('ROWCHANGE', @y, 0)
     end
 
-    # Process a control character.
-    #
-    def _process_ctl(ctl)
-      name = @_ctlseq[ctl]
-      return if name.nil?                  # ignore unknown characters
-
-      #If we're in XOFF mode, ifgnore anything other than XON
-      if @_xon == 0
-        return if name != 'XON'
-      end
-
-
-      symbol = @_funcs[name]
-      if symbol.nil?
-        callback_call('UNKNOWN', name, ctl)
-      else
-        m = method(symbol)
-        send(symbol, *([name].first(m.arity)))
-      end
-    end
-
-    # Check the escape-sequence buffer, and process it if necessary.
-    #
-    def _process_escseq
-      params = []
-
-      return if @_buf.nil? || @_buf.empty?
-      return if @_xon == 0
-
-      if @_inesc == 'OSC'
-        if @_buf.match(/\A0;([^\007]*)(?:\007|\033\\)/m)
-          dat = $1                         # icon & window
-          callback_call('XWINTITLE', dat)
-          callback_call('XICONNAME', dat)
-          @ic = dat
-          @ti = dat
-          @_buf = nil
-          @_inesc = ''
-        elsif @_buf.match(/\A1;([^\007]*)(?:\007|\033\\)/m)
-          dat = $1                         # set icon name
-          callback_call('XICONNAME', dat)
-          @ic = dat
-          @_buf = nil
-          @_inesc = ''
-        elsif @_buf.match(/\A2;([^\007]*)(?:\007|\033\\)/m)
-          dat = $1                         # set window title
-          callback_call('XWINTITLE', dat)
-          @ti = dat
-          @_buf = nil
-          @_inesc = ''
-        elsif @_buf.match(/\A\d+;([^\007]*)(?:\007|\033\\)/m)
-                                           # unknown OSC
-          callback_call('UNKNOWN', 'OSC', "\033]" + @_buf)
-          @_buf = nil
-          @_inesc = ''
-        elsif @_buf.size > 1024            # OSC too long
-          callback_call('UNKNOWN', 'OSC', "\033]" + @_buf)
-          @_buf = nil
-          @_inesc = ''
-        end
-      elsif @_inesc == 'CSI'               # in CSI sequence
-        @_csiseq.keys.each do |suffix|
-          next if @_buf.size < suffix.size
-          next if @_buf[@_buf.size - suffix.size, suffix.size] != suffix
-
-          @_buf = @_buf[0, @_buf.size - suffix.size]
-
-          name = @_csiseq[suffix]
-          func = @_funcs[name]
-
-          if func.nil?                     # unsupported sequence
-            callback_call('UNKNOWN', name, "\033[" + @_buf + suffix)
-            @_buf = nil
-            @_inesc = ''
-            return
-          end
-
-          params = @_buf.split(';').map(&:to_i)
-          @_buf = nil
-          @_inesc = ''
-
-          send(func, *params)
-          return
-        end
-
-        if @_buf.size > 64                 # abort CSI sequence if too long
-          callback_call('UNKNOWN', 'CSI', "\033[" + @_buf)
-          @_buf = nil
-          @_inesc = ''
-        end
-      elsif @_inesc =~ /_ST\z/m
-        if @_buf.sub!(/\033\\\z/m, '')
-          @_inesc.sub!(/_ST\z/m, '')
-          callback_call('STRING', @_inesc, @_buf)
-          @_buf = nil
-          @_inesc = ''
-        elsif @_buf.size > 1024            # string too long
-          @_inesc.sub!(/_ST\z/m, '')
-          callback_call('STRING', @_inesc, @_buf)
-          @_buf = nil
-          @_inesc = ''
-        end
-      else                                 # in ESC sequence
-        @_escseq.keys.each do |prefix|
-          next if @_buf[0, prefix.size] != prefix
-
-          name = @_escseq[prefix]
-          func = @_funcs[name]
-          if func.nil?                     # unsupported sequence
-            callback_call('UNKNOWN', name, "\033" + @_buf)
-            @_buf = nil
-            @_inesc = ''
-            return
-          end
-          @_buf = nil
-          @_inesc = ''
-          send(func)
-          return
-        end
-
-        if @_buf.size > 8                  # abort ESC sequence if too long
-          callback_call('UNKNOWN', 'ESC', "\033" + @_buf)
-          @_buf = nil
-          @_inesc = ''
-        end
-      end
-    end
 
     # Scroll the scrolling region up such that the text in the scrolling region
     # moves down, by the given number of lines.
@@ -873,23 +808,12 @@ module Term
     end
 
     def _code_BEL                          # beep
-      if @_buf && @_inesc == 'OSC'
-        # CSI OSC can be terminated with a BEL
-        @_buf += "\007"
-        _process_escseq()
-      else
-        callback_call('BELL')
-      end
+      callback_call('BELL')
     end
 
     def _code_BS                           # move left 1 character
       @x -= 1
       @x = 1 if @x < 1
-    end
-
-    def _code_CAN                          # cancel escape sequence
-      @_buf = nil
-      @_inesc = ''
     end
 
     def _code_TBC(num = nil)               # clear tab stop (CSI 3 g = clear all stops)
@@ -924,11 +848,6 @@ module Term
 
     def _code_CR                           # carriage return
       @x = 1
-    end
-
-    def _code_CSI                          # ESC [
-      @_buf = ''                           # restart ESC buffering
-      @_inesc = 'CSI'                      # ...for a CSI, not an ESC
     end
 
     def _code_CUB(num = 1)                 # move cursor left
@@ -967,7 +886,7 @@ module Term
 
     def _code_RI                           # reverse line feed
       callback_call('GOTO', @x, @y - 1)
-      _move_up
+      _move_up(1)
     end
 
     def _code_CUU(num = 1)                 # move cursor up
@@ -1000,11 +919,6 @@ module Term
       @scra[@y] = lsub + rsub + (DEFAULT_ATTR_PACKED * todel)
 
       callback_call('ROWCHANGE', @y, 0)
-    end
-
-    def _code_DCS                          # device control string (ignored)
-      @_buf = ''
-      @_inesc = 'DCS_ST'
     end
 
     def _code_DECSTBM(top = 1, bottom = nil) # set scrolling region
@@ -1144,18 +1058,6 @@ module Term
       end
     end
 
-    def _code_ESC                         # start escape sequence
-      if @_buf && @_inesc.match(/OSC|_ST/)
-        # Some sequences are terminated with an ST
-        @_buf += "\033"
-        _process_escseq
-        return
-      end
-
-      @_buf = ''                          # set ESC buffer
-      @_inesc = 'ESC'                     # ...for ESC, not CSI
-    end
-
     def _code_LF                          # line feed
       _code_CR if @opts['LFTOCRLF'] != 0
 
@@ -1244,45 +1146,19 @@ module Term
       end
     end
 
-    def _code_PM                          # privacy message (ignored)
-      @_buf = ''
-      @_inesc = 'PM_ST'
-    end
-
-    def _code_APC                         # application program command (ignored)
-      @_buf = ''
-      @_inesc = 'APC_ST'
-    end
-
-    def _code_OSC                         # operating system command
-      @_buf = ''                          # restart buffering
-      @_inesc = 'OSC'                     # ...for OSC, not ESC or CSI
-    end
 
     def _code_RIS                         # reset
       reset
     end
 
     def _toggle_mode(flag, modes)         # set/reset modes
-      # Transcription Note: This isn't really a loop
-      fail ArgumentError, "only first mode applied" if modes.size > 1
+      name = @_modeseq[modes.first]
+      func = @_funcs[name] if name
 
-      modes.each do |mode|
-        name = @_modeseq[mode]
-        func = nil
-        func = @_funcs[name] unless name.nil?
-
-        if func.nil?
-          callback_call('UNKNOWN', name, "\033[#{mode}" + (flag ? "h" : "l"))
-          @_buf = nil
-          @_inesc = ''
-          return
-        end
-
-        @_buf = nil
-        @_inesc = ''
+      if func.nil?
+        callback_call('UNKNOWN', 'MODE', modes.first, (flag ? 'h' : 'l'))
+      else
         send(func, flag)
-        return
       end
     end
 
@@ -1374,12 +1250,12 @@ module Term
     end
 
     def _code_XON                         # resume character processing
-      @_xon = 1
+      @_xon = true
     end
 
     def _code_XOFF                        # stop character processing
       return if @opts['IGNOREXOFF'] == 1
-      @_xon = 0
+      @_xon = false
     end
   end
 end

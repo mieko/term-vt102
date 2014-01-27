@@ -119,14 +119,14 @@ module Term
     }.freeze
 
     MODE_SEQ = {             # ANSI Specified Modes
-      '0'  => :IGN,            # Error (Ignored)
-      '1'  => :GATM,           # guarded-area transfer mode (ignored)
-      '2'  => :KAM,            # keyboard action mode (always reset)
-      '3'  => :CRM,            # control representation mode (always reset)
-      '4'  => :IRM,            # insertion/replacement mode (always reset)
-      '5'  => :SRTM,           # status-reporting transfer mode
-      '6'  => :ERM,            # erasure mode (always set)
-      '7'  => :VEM,            # vertical editing mode (ignored)
+      '0'   => :IGN,            # Error (Ignored)
+      '1'   => :GATM,           # guarded-area transfer mode (ignored)
+      '2'   => :KAM,            # keyboard action mode (always reset)
+      '3'   => :CRM,            # control representation mode (always reset)
+      '4'   => :IRM,            # insertion/replacement mode (always reset)
+      '5'   => :SRTM,           # status-reporting transfer mode
+      '6'   => :ERM,            # erasure mode (always set)
+      '7'   => :VEM,            # vertical editing mode (ignored)
       '10'  => :HEM,           # horizontal editing mode
       '11'  => :PUM,           # positioning unit mode
       '12'  => :SRM,           # send/receive mode (echo on/off)
@@ -356,7 +356,7 @@ module Term
         # Most CSI functions don't care about private flags.  To keep a sane
         # interface, we just pass the code unless the method has a priv_flags:
         # keyword argument, which if exists, will get an array of Boolean
-        # where True means private
+        # where true means private
         priv_flags = params.map(&:first)
         params.map!(&:last)
 
@@ -429,7 +429,7 @@ module Term
     def initialize(cols: 80, rows: 24)
       @parser = Term::DECParser.new(&method(:parser_callback))
 
-      @_callbacks = {
+      @callbacks = {
         :bell         => nil,  # bell character received
         :goto         => nil,
         :clear        => nil,  # screen cleared
@@ -447,17 +447,17 @@ module Term
       }
 
       # saved state for DECSC/DECRC
-      @_decsc = []
+      @decsc = []
 
       # saved state for CUPSV/CUPRS
-      @_cupsv = []
+      @cupsv = []
 
       # state is XON (characters accepted)
       @xon = true
       @echo = true
 
       # tab stops
-      @_tabstops = []
+      @tabstops = []
 
       @cols, @rows = (cols > 0 ? cols : 80),
                      (rows > 0 ? rows : 24)
@@ -468,11 +468,11 @@ module Term
     # Call a callback function with the given parameters.
     #
     def callback_call(callback, *args)
-      unless @_callbacks.has_key?(callback)
+      unless @callbacks.has_key?(callback)
         fail ArgumentError, "invalid callback #{callback.inspect}"
       end
 
-      if (func = @_callbacks[callback])
+      if (func = @callbacks[callback])
         func.call(self, callback, *args)
       end
     end
@@ -480,10 +480,10 @@ module Term
     # Set a callback function.
     #
     def callback_set(callback, &ref)
-      unless @_callbacks.has_key?(callback)
+      unless @callbacks.has_key?(callback)
         fail ArgumentError, "invalid callback #{callback.inspect}"
       end
-      @_callbacks[callback] = ref
+      @callbacks[callback] = ref
     end
 
     # Reset the terminal to "power-on" values.
@@ -513,10 +513,10 @@ module Term
         @scra[i] = @attr * @cols           # set attributes to default
       end
 
-      @_tabstops = []                      # reset tab stops
+      @tabstops = []                      # reset tab stops
       i = 1
       while i < @cols
-        @_tabstops[i] = 1
+        @tabstops[i] = true
         i += 8
       end
 
@@ -847,9 +847,9 @@ module Term
 
     def _code_TBC(num = nil)               # clear tab stop (CSI 3 g = clear all stops)
       if num == 3
-        @_tabstops = []
+        @tabstops = []
       else
-        @_tabstops[@x] = nil
+        @tabstops[@x] = nil
       end
     end
 
@@ -1107,7 +1107,7 @@ module Term
       end
 
       newx = @x + 1
-      while newx < @cols && @_tabstops[newx] != 1
+      while newx < @cols && !@tabstops[newx]
         newx += 1
       end
 
@@ -1122,7 +1122,7 @@ module Term
     end
 
     def _code_HTS                         # set tab stop at current column
-      @_tabstops[@x] = 1
+      @tabstops[@x] = true
     end
 
     def _code_ICH(num = 1)                # insert blank characters
@@ -1292,21 +1292,21 @@ module Term
     end
 
     def _code_DECSC                       # save state
-      @_decsc.push([@x, @y, @attr, @ti, @ic, @cursor])
+      @decsc.push([@x, @y, @attr, @ti, @ic, @cursor])
     end
 
     def _code_DECRC                       # restore most recently saved state
-      return if @_decsc.empty?
-      @x, @y, @attr, @ti, @ic, @cursor = @_decsc.pop
+      return if @decsc.empty?
+      @x, @y, @attr, @ti, @ic, @cursor = @decsc.pop
     end
 
     def _code_CUPSV                       # save cursor position
-      @_cupsv.push([@x, @y])
+      @cupsv.push([@x, @y])
     end
 
     def _code_CUPRS                       # restore cursor position
-      return if @_cupsv.empty?
-      @x, @y = @_cupsv.pop
+      return if @cupsv.empty?
+      @x, @y = @cupsv.pop
     end
 
     def _code_XON                         # resume character processing

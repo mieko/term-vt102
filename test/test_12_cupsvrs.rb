@@ -11,8 +11,8 @@ require 'term/vt102'
 class TestCupsvrs < TestBase
   def test_00_cupsv_cuprs
     #              (F,B,b,f,s,u,F,r)
-    assert_screens [
-      [ 5, 3, "\e[41;33mtest\e[s\e[2H\e[42;34mgrok\e[s\e[m\e[3Hfoo\e[u2\e[u1",
+    assert_screen [
+        5, 3, "\e[41;33mtest\e[s\e[2H\e[42;34mgrok\e[s\e[m\e[3Hfoo\e[u2\e[u1",
         "test1", [ [3,1,0,0,0,0,0,0],
                    [3,1,0,0,0,0,0,0],
                    [3,1,0,0,0,0,0,0],
@@ -29,6 +29,5 @@ class TestCupsvrs < TestBase
                    [7,0,0,0,0,0,0,0],
                    [7,0,0,0,0,0,0,0] ],
       ]
-    ]
   end
 end

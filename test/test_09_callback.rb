@@ -16,7 +16,7 @@ class TestCallback < TestBase
 	end
 
 	def testcallback
-		-> (vt, cb, *args) do
+		-> (cb, *args) do
 			@testcb, @testargs = cb, args
 		end
 	end

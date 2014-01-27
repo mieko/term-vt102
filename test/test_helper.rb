@@ -58,6 +58,10 @@ class TestBase < Minitest::Test
 
     vt.process(text)
 
+    vt.callback_set(:unknown) do |*args|
+      puts "[UNKNOWN] #{args.inspect}"
+    end
+
     row = 0
 
     alineref = nil

@@ -322,16 +322,16 @@ module Term
     def cb_execute(ctl)
       name = CTL_SEQ[ctl.chr]
       if name.nil?
-        callback_call(:unknown, :command_raw, ctl)
+        callback_call(:unknown, :command, ctl)
         return if name.nil?                  # ignore unknown characters
       end
 
       symbol = METHOD_MAP[name]
       if symbol.nil?
-        callback_call(:unknown, :command, name, ctl)
+        callback_call(:unknown, :command, "#{ctl} #{name}")
       else
         m = method(symbol)
-        send(symbol, *([name].first(m.arity)))
+        m.call()
       end
     end
 
@@ -351,7 +351,7 @@ module Term
       name = CSI_SEQ[csi_code.chr]
       func = METHOD_MAP[name]
       if func.nil?
-        callback_call(:unknown, :csi, csi_code, params)
+        callback_call(:unknown, :csi, "#{csi_code} #{name}", params)
       else
         # Most CSI functions don't care about private flags.  To keep a sane
         # interface, we just pass the code unless the method has a priv_flags:
@@ -361,15 +361,27 @@ module Term
         params.map!(&:last)
 
         m = method(func)
+
         has_privarg = m.parameters.find do |arg|
           arg == [:key, :priv_flags] ||
           arg == [:keyreq, :priv_flags]
         end
 
+        param_count = m.parameters.count{|k,v| [:opt, :req].include?(k) }
+        has_rest = m.parameters.find{|k,v| k == :rest }
+
+        if !has_rest && param_count < params.size
+          fail ArgumentError,
+               "Wanted to pass #{params.size} parameters (#{params.inspect}) " +
+               "to #{m.inspect}, but it only accepts #{param_count}"
+        end
+
+        passed_params = has_rest ? params : params.first(param_count)
+
         if has_privarg
-          m.call(*params, priv_flags: priv_flags)
+          m.call(*passed_params, priv_flags: priv_flags)
         else
-          m.call(*params)
+          m.call(*passed_params)
         end
       end
     end
@@ -469,21 +481,21 @@ module Term
     #
     def callback_call(callback, *args)
       unless @callbacks.has_key?(callback)
-        fail ArgumentError, "invalid callback #{callback.inspect}"
+        fail ArgumentError, "invalid callback name: #{callback.inspect}"
       end
 
       if (func = @callbacks[callback])
-        func.call(self, callback, *args)
+        func.call(self, *args)
       end
     end
 
     # Set a callback function.
     #
-    def callback_set(callback, &ref)
+    def callback_set(callback, &block)
       unless @callbacks.has_key?(callback)
-        fail ArgumentError, "invalid callback #{callback.inspect}"
+        fail ArgumentError, "invalid callback name: #{callback.inspect}"
       end
-      @callbacks[callback] = ref
+      @callbacks[callback] = block
     end
 
     # Reset the terminal to "power-on" values.
@@ -924,8 +936,8 @@ module Term
       _move_up(num)
     end
 
-    def _code_DA                           # return ESC [ ? 6 c (VT102)
-      callback_call(:output, "\033[?6c", 0)
+    def _code_DA(code = 0)                 # return ESC [ ? 6 c (VT102)
+      callback_call(:output, "\e[?6c")
     end
 
     def _code_DCH(num = 1)                 # delete characters on current line
@@ -998,9 +1010,9 @@ module Term
 
     def _code_DSR(num = 5)                 # device status report
       if num == 6                          # CPR - cursor position report
-        callback_call(:output, "\e[#{@y};#{@x}R", 0)
+        callback_call(:output, "\e[#{@y};#{@x}R")
       elsif num == 5                       # DSR - reply ESC [ 0 n
-        callback_call(:output, "\e[0n", 0)
+        callback_call(:output, "\e[0n")
       end
     end
 
@@ -1187,11 +1199,11 @@ module Term
         fail ArgumentError, "mode must be in string form"
       end
 
-      name = MODE_SEQ[modestr]
+      name = MODE_SEQ[mode]
       func = METHOD_MAP[name] if name
 
       if func.nil?
-        callback_call(:unknown, :mode, name, modestr, flag)
+        callback_call(:unknown, :mode, "#{mode} #{name}", flag)
       else
         send(func, flag)
       end
@@ -1231,36 +1243,21 @@ module Term
       parms = [0] if parms.empty?         # ESC [ m = ESC [ 0 m
       parms.each do |val|
         case val
-          when 0                          # reset all attributes
-            fg, bg, bo, fa, st, ul, bl, rv = DEFAULT_ATTR
-          when 1                          # bold ON
-            bo, fa = 1, 0
-          when 2                          # faint ON
-            bo, fa = 0, 1
-          when 4                          # underline ON
-            ul = 1
-          when 5                          # blink ON
-            bl = 1
-          when 7                          # reverse video ON
-            rv = 1
-          when 21..22                     # normal intensity
-            bo, fa = 0, 0
-          when 24                         # underline OFF
-            ul = 0
-          when 25                         # blink OFF
-            bl = 0
-          when 27                         # reverse video OFF
-            rv = 0
-          when 30..37                     # set foreground colour
-            fg = val - 30
-          when 38                         # underline on, default fg
-            ul, fg = 1, 7
-          when 39                         # underline off, default fg
-            ul, fg = 0, 7
-          when 40..47                     # set background colour
-            bg = val - 40
-          when  49                        # default background
-            bg = 0
+          when 0;       fg, bg, bo, fa, st, ul, bl, rv = DEFAULT_ATTR  # reset
+          when 1;       bo, fa = 1, 0           # bold ON
+          when 2;       bo, fa = 0, 1           # faint ON
+          when 4;       ul = 1                  # underline ON
+          when 5;       bl = 1                  # blink ON
+          when 7;       rv = 1                  # reverse video ON
+          when 21..22;  bo, fa = 0, 0           # normal intensity
+          when 24;      ul = 0                  # underline OFF
+          when 25;      bl = 0                  # blink OFF
+          when 27;      rv = 0                  # reverse video OFF
+          when 30..37;  fg = val - 30           # set foreground colour
+          when 38;      ul, fg = 1, 7           # underline on, default fg
+          when 39;      ul, fg = 0, 7           # underline off, default fg
+          when 40..47;  bg = val - 40           # set background colour
+          when 49;      bg = 0                  # default background
         end
       end
 

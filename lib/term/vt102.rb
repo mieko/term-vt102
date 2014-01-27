@@ -348,19 +348,29 @@ module Term
     end
 
     def cb_csi_dispatch(csi_code, *params)
-      # params is an array of [private?, mode] pairs.  We put them
-      # back into their canonical "\d" or "\?\d" forms.
-      params = params.map do |priv, arg|
-        "#{priv ? '?' : ''}#{arg}"
-      end
-
       name = CSI_SEQ[csi_code.chr]
       func = METHOD_MAP[name]
       if func.nil?
         callback_call(:unknown, :csi, csi_code, params)
       else
-        puts "calling #{func.inspect} #{params.inspect}"
-        send(func, *params)
+        # Most CSI functions don't care about private flags.  To keep a sane
+        # interface, we just pass the code unless the method has a priv_flags:
+        # keyword argument, which if exists, will get an array of Boolean
+        # where True means private
+        priv_flags = params.map(&:first)
+        params.map!(&:last)
+
+        m = method(func)
+        has_privarg = m.parameters.find do |arg|
+          arg == [:key, :priv_flags] ||
+          arg == [:keyreq, :priv_flags]
+        end
+
+        if has_privarg
+          m.call(*params, priv_flags: priv_flags)
+        else
+          m.call(*params)
+        end
       end
     end
 
@@ -1171,7 +1181,12 @@ module Term
     end
 
     def _toggle_mode(mode, flag)         # set/reset modes
-      modestr = "#{mode[0] ? '?' : ''}#{mode[1]}"
+      # Most modes stay in Fixnum form.  These are in "?1" form.  Let's make
+      # sure no caller gets confused.
+      unless mode.is_a?(String)
+        fail ArgumentError, "mode must be in string form"
+      end
+
       name = MODE_SEQ[modestr]
       func = METHOD_MAP[name] if name
 
@@ -1182,13 +1197,29 @@ module Term
       end
     end
 
-    def _code_RM(*modes)                     # reset mode
+    # Takes an array of modes and an array of priv_flags, and turns them
+    # back into a canonical string.  E.g.,
+    #   modes: [1, 2, 3]
+    #   priv_flags: [false, true, false]
+    # -> ["1", "?2", "3"]
+    def build_canonical_mode_names(modes, priv_flags)
+      if modes.size != priv_flags.size
+        fail ArgumentError, "modes and priv_flags must be same length"
+      end
+      modes.map.with_index do |m, f|
+        "#{f ? '?' : ''}#{m}"
+      end
+    end
+
+    def _code_RM(*modes, priv_flags:)        # reset mode
+      modes = build_canonical_mode_names(modes, priv_flags)
       modes.each do |mode|
         _toggle_mode(mode, false)
       end
     end
 
-    def _code_SM(*modes)                     # set mode
+    def _code_SM(*modes, priv_flags:)          # set mode
+      modes = build_canonical_mode_names(modes, priv_flags)
       modes.each do |mode|
         _toggle_mode(mode, true)
       end

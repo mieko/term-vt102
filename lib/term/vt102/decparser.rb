@@ -5,7 +5,6 @@ module Term
 
   class DECParser
     attr_accessor :callback
-    attr_reader   :params
 
     def initialize(&callback)
       @callback =callback
@@ -24,7 +23,9 @@ module Term
         ch = byte.ord
         change = @state_table[:ANYWHERE][ch]
         change ||= @state_table[@state][ch]
-        do_state_change(change, ch)
+        if change
+          do_state_change(change, ch)
+        end
       end
     end
 
@@ -42,6 +43,9 @@ module Term
 
     def do_action(action, ch)
       case action
+        when :ignore
+          # nothing
+
         when :str_type
           # These work in either context, :ANYWHERE or :ESCAPE
           @string_type = {
@@ -54,43 +58,44 @@ module Term
             0x9f => :apc
           }[ch]
 
-        when :str_start
-          callback.call(action, @string_type, ch)
-
-        when :str_put
-          callback.call(action, @string_type, ch)
-
-        when :str_end
+        when :str_start, :str_put, :str_end
           callback.call(action, @string_type, ch)
 
         when :esc_dispatch
-          full_str = (@buf + [ch]).map(&:chr).join.encode('ASCII-8BIT')
-          @buf = []
-          callback.call(action, full_str)
+          callback.call(action, @buf + [ch])
 
-        when :print, :execute, :hook, :put,
-             :osc_start, :osc_put, :osc_end,
-             :unhook, :csi_dispatch, :esc_dispatch,
-             :str_start, :str_put, :str_end
+        when :csi_dispatch
+          callback.call(action, ch, *@params)
+
+        when :print
           callback.call(action, ch)
 
-        when :ignore
-          # do nothing
+        when :execute
+          callback.call(action, ch)
+
+        when :osc_start, :osc_put, :osc_end
+          callback.call(action, ch)
+
+        when :print, :put, :hook, :unhook
+          callback.call(action, ch)
 
         when :collect
           if @buf.size == MAX_INTERMEDIATE_CHARS
             @ignore_flagged = true
           else
-            @buf.push(ch) unless ch == 0
+            @buf.push(ch)
           end
 
         when :param
-          if ch == ';'.ord
-            @params.push(0)
+          if ch == '?'.ord
+            @params.push([false, 0]) if @params.empty?
+            @params[-1][0] = true
+          elsif ch == ';'.ord
+            @params.push([false, 0])
           else
-            params.push(0) if params.empty?
-            @params[-1] *= 10
-            @params[-1] += (ch - '0'.ord)
+            @params.push([false, 0]) if @params.empty?
+            @params[-1][1] *= 10
+            @params[-1][1] += (ch - '0'.ord)
           end
 
         when :clear
@@ -124,7 +129,6 @@ module Term
       else
         do_action(action, ch)
       end
-
     end
 
     def transition_to(state)
@@ -147,7 +151,7 @@ module Term
         0x9f       => [:str_type, transition_to(:SOS_PM_APC_STRING)],
         0x90       => transition_to(:DCS_ENTRY),
         0x9d       => transition_to(:OSC_STRING),
-        0x9b       => transition_to(:CSI_ENTRY),
+        0x9b       => transition_to(:CSI_ENTRY)
       }
 
       states[:GROUND] = {
@@ -179,7 +183,7 @@ module Term
         0x50       => transition_to(:DCS_ENTRY),
         0x58       => [:str_type, transition_to(:SOS_PM_APC_STRING)],
         0x5e       => [:str_type, transition_to(:SOS_PM_APC_STRING)],
-        0x5f       => [:str_type, transition_to(:SOS_PM_APC_STRING)],
+        0x5f       => [:str_type, transition_to(:SOS_PM_APC_STRING)]
       }
 
       states[:ESCAPE_INTERMEDIATE] = {
@@ -201,7 +205,8 @@ module Term
         0x3a       => transition_to(:CSI_IGNORE),
         0x30..0x39 => [:param, transition_to(:CSI_PARAM)],
         0x3b       => [:param, transition_to(:CSI_PARAM)],
-        0x3c..0x3f => [:collect, transition_to(:CSI_PARAM)],
+        0x3f       => [:param, transition_to(:CSI_PARAM)],
+        0x3c..0x3e => [:collect, transition_to(:CSI_PARAM)],
         0x40..0x7e => [:csi_dispatch, transition_to(:GROUND)]
       }
 
@@ -211,7 +216,7 @@ module Term
         0x1c..0x1f => :execute,
         0x20..0x3f => :ignore,
         0x7f       => :ignore,
-        0x40..0x7e => transition_to(:GROUND),
+        0x40..0x7e => transition_to(:GROUND)
       }
 
       states[:CSI_PARAM] = {
@@ -220,9 +225,10 @@ module Term
         0x1c..0x1f => :execute,
         0x30..0x39 => :param,
         0x3b       => :param,
+        0x3f       => :param,
         0x7f       => :ignore,
         0x3a       => transition_to(:CSI_IGNORE),
-        0x3c..0x3f => transition_to(:CSI_IGNORE),
+        0x3c..0x3e => transition_to(:CSI_IGNORE),
         0x20..0x2f => [:collect, transition_to(:CSI_INTERMEDIATE)],
         0x40..0x7e => [:csi_dispatch, transition_to(:GROUND)]
       }
@@ -234,7 +240,7 @@ module Term
         0x20..0x2f => :collect,
         0x7f       => :ignore,
         0x30..0x3f => transition_to(:CSI_IGNORE),
-        0x40..0x7e => [:csi_dispatch, transition_to(:GROUND)],
+        0x40..0x7e => [:csi_dispatch, transition_to(:GROUND)]
       }
 
       states[:DCS_ENTRY] = {
@@ -293,16 +299,6 @@ module Term
         :on_exit   => :unhook
       }
 
-      states[:SOS_PM_APC_STRING] = {
-        :on_entry  => :str_start,
-        0x00..0x17 => :str_put,
-        0x19       => :str_put,
-        0x1c..0x1f => :str_put,
-        0x20..0x7f => :str_put,
-        0x9c       => transition_to(:GROUND),
-        :on_exit   => :str_end
-      }
-
       states[:OSC_STRING] = {
         :on_entry  => :osc_start,
         0x00..0x17 => :ignore,
@@ -311,6 +307,16 @@ module Term
         0x20..0x7f => :osc_put,
         0x9c       => transition_to(:GROUND),
         :on_exit   => :osc_end
+      }
+
+      states[:SOS_PM_APC_STRING] = {
+        :on_entry  => :str_start,
+        0x00..0x17 => :str_put,
+        0x19       => :str_put,
+        0x1c..0x1f => :str_put,
+        0x20..0x7f => :str_put,
+        0x9c       => transition_to(:GROUND),
+        :on_exit   => :str_end
       }
 
       @state_table = {}
@@ -339,9 +345,11 @@ module Term
         rhs = Array(v)
         case k
         when Fixnum
+          fail ArgumentError, sprintf("0x%x already specified", k) if result[k]
           result[k] = rhs
         when Range
           k.each do |i|
+            fail ArgumentError, sprintf("0x%x already specified", i) if result[i]
             result[i] = rhs
           end
         when :on_entry, :on_exit

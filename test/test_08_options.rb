@@ -11,7 +11,7 @@ require 'term/vt102'
 class TestOptions < TestBase
   def test_00_options
     assert_screen [
-      { :lftocrlf => true }, 10, 5, "line 1\n  line 2\n  line 3\nline 4",
+      { :lf_to_crlf => true }, 10, 5, "line 1\n  line 2\n  line 3\nline 4",
         "line 1" + ("\0" * 4),
         "  line 2" + ("\0" * 2),
         "  line 3" + ("\0" * 2),
@@ -19,7 +19,7 @@ class TestOptions < TestBase
       ]
 
     assert_screen [
-      { :linewrap => true }, 10, 5, "abcdefghijklmnopqrstuvwxyz",
+      { :line_wrap => true }, 10, 5, "abcdefghijklmnopqrstuvwxyz",
         "abcdefghij",
         "klmnopqrst",
         "uvwxyz" + ("\0" * 4),

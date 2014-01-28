@@ -8,6 +8,15 @@ class TestBase < Minitest::Test
   # the same order as the Perl original, for comparison's sake.
   i_suck_and_my_tests_are_order_dependent!
 
+  # These were public in the perl module.  Let's hack access.
+  def attr_pack(vt, *args)
+    vt.send(:attr_pack, *args)
+  end
+
+  def attr_unpack(vt, *args)
+    vt.send(:attr_unpack, *args)
+  end
+
   def show_text(text)
     return '' if text.nil?
 
@@ -19,7 +28,7 @@ class TestBase < Minitest::Test
   end
 
   def show_attr(vt, attr)
-    fg, bg, bo, fa, st, ul, bl, rv = vt.attr_unpack(attr)
+    fg, bg, bo, fa, st, ul, bl, rv = attr_unpack(vt, attr)
     str = "#{fg}-#{bg}"
 
     str += 'b' if bo != 0
@@ -29,7 +38,7 @@ class TestBase < Minitest::Test
     str += 'F' if bl != 0
     str += 'r' if rv != 0
 
-    return str + '-' + sprintf('%04X', attr.unpack('S').first)
+    return str + '-' + sprintf('%04X', attr)
   end
 
   def assert_screens(screens)
@@ -52,15 +61,11 @@ class TestBase < Minitest::Test
 
     if settings
       settings.each do |k, v|
-        refute_nil vt.option_set(k, v), "failed to set option #{k}=#{v}"
+        vt.send("#{k}=", v)
       end
     end
 
     vt.process(text)
-
-    vt.callback_set(:unknown) do |*args|
-      puts "[UNKNOWN] #{args.inspect}"
-    end
 
     row = 0
 
@@ -69,9 +74,9 @@ class TestBase < Minitest::Test
       line = output.shift
       if output.first.is_a?(Array)
         alineref = output.shift
-        aline = ''
+        aline = []
         alineref.each do |l|
-          aline += vt.attr_pack(*l)
+          aline += [attr_pack(vt, *l)]
         end
       else
         alineref = nil
@@ -83,9 +88,9 @@ class TestBase < Minitest::Test
       next if alineref.nil?
 
       galine = vt.row_attr(row)
-      (0...cols).each do |col|
-        expected = aline[2 * col, 2]
-        actual = galine[2 * col, 2]
+      (1...cols).each do |col|
+        expected = aline[col]
+        actual = galine[col]
 
         assert_equal expected, actual,
                      "row #{row}; attributes #{show_attr(vt, expected)} vs " +

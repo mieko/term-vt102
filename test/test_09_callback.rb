@@ -21,17 +21,8 @@ class TestCallback < TestBase
 		end
 	end
 
-	def test_00_rowchange_runs
-		@vt.callback_call(:rowchange, 0, 0)
-	end
-
-	def test_01_rowchange_sets_private_data
-		@vt.callback_set(:rowchange, &testcallback)
-		@vt.callback_call(:rowchange, 0, 0)
-	end
-
 	def test_02_string_callback_reports_esc
-		@vt.callback_set(:string, &testcallback)
+		@vt.connect(:string, &testcallback)
 		@vt.process("\033_Test String\033\\test")
 
 		assert_equal :apc, @testargs[0]
@@ -39,14 +30,14 @@ class TestCallback < TestBase
 	end
 
 	def test_03_xicon
-		@vt.callback_set(:xiconname, &testcallback)
+		@vt.connect(:icon_name, &testcallback)
 		@vt.process("\033]1;Test Icon Name\033\\test")
 
 		assert_equal 'Test Icon Name', @testargs[0]
 	end
 
 	def test_04_xwintitle
-		@vt.callback_set(:xwintitle, &testcallback)
+		@vt.connect(:window_name, &testcallback)
 		@vt.process("\033]2;Test Title\033\\test")
 
 		assert_equal 'Test Title', @testargs[0]
